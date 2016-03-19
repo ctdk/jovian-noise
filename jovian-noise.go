@@ -101,7 +101,16 @@ func main() {
 		fmt.Printf("jovian-noise version %s\n", version)
 		os.Exit(0)
 	}
-	
+
+	if *interval < 1 {
+		fmt.Printf("-interval must be at least 1 minute.\n")
+		os.Exit(1)
+	}
+	if *dur < time.Duration(*interval) * time.Minute {
+		fmt.Printf("-duration really should be longer than the interval specified.\n")
+		os.Exit(1)
+	}
+
 	if *startTime == "" {
 		t = time.Now().UTC()
 	} else {
@@ -132,7 +141,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	endTime := t.Add(*dur)
+	endTime := t.Add(*dur - time.Second)
 	fmt.Printf("################################################################################\n")
 	fmt.Printf("\t\tJovian Decameter Radio Storm Forcast for:\n")
 	fmt.Printf("\t\t    %s\n", t)

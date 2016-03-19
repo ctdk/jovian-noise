@@ -37,6 +37,14 @@ Many web pages went into getting this together. The most immediately useful for 
 
 * https://github.com/akkana/scripts/blob/master/jsjupiter/jupiter.js
 
+More Information about Jupiter amateur radio astronomy
+
+* http://www.radiosky.com/rjcentral.html
+
+* http://www.thrushobservatory.org/radio.htm
+
+* http://radiojove.gsfc.nasa.gov/ -- NASA's Radio JOVE Project
+
 License
 
 Copyright 2016, Jeremy Bingham, under the terms of the MIT License.

@@ -20,13 +20,19 @@ To run this program, you will need to obtain the VSOP87 files for planet locatio
     	    Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to now)
 ```
 
-###Credits
+### Credits
 
 Many web pages went into getting this together. The most immediately useful for this program were:
 
 * http://www.spaceacademy.net.au/spacelab/projects/jovrad/jovrad.htm
 * http://www.projectpluto.com/grs_form.htm
 * https://github.com/akkana/scripts/blob/master/jsjupiter/jupiter.js
+
+### More Information about Jupiter amateur radio astronomy
+
+* http://www.radiosky.com/rjcentral.html
+* http://www.thrushobservatory.org/radio.htm
+* http://radiojove.gsfc.nasa.gov/ -- NASA's Radio JOVE Project
 
 ### License
 

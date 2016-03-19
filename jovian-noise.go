@@ -127,8 +127,8 @@ func main() {
 	endTime := t.Add(*dur)
 	fmt.Printf("################################################################################\n")
 	fmt.Printf("\t\tJovian Decameter Radio Storm Forcast for:\n")
-	fmt.Printf("\t\t%s\n", t)
-	fmt.Printf("\t\t\t\tuntil:\n\t\t%s\n", endTime)
+	fmt.Printf("\t\t    %s\n", t)
+	fmt.Printf("\t\t\t\tuntil:\n\t\t    %s\n", endTime)
 	lz, loff := t.Local().Zone()
 	fmt.Printf("\t\t     Local time zone: %s (%05d)\n", lz, (loff / 60 / 60) * 100)
 	if *lat != 0 && *lon != 0 {

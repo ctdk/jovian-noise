@@ -76,15 +76,23 @@ var months = []string{
 	"Dec",
 }
 
+const version string = "0.1.5"
+
 func main() {
 	startTime := flag.String("start-time", "", "Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to now)")
 	dur := flag.Duration("duration", 30 * 24 * time.Hour, "Duration (in golang ParseDuration format) from the start time to calculate the forecast")
 	interval := flag.Int("interval", 30, "Interval in minutes to calculate the forecast")
 	lat := flag.Int("lat", 0, "Optional latitute. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lon")
 	lon := flag.Int("lon", 0, "Optional longitude. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lat")
+	ver := flag.Bool("version", false, "Print version number and exit.")
 
 	var t time.Time
 	flag.Parse()
+
+	if *ver {
+		fmt.Printf("jovian-noise version %s\n", version)
+		os.Exit(0)
+	}
 	
 	if *startTime == "" {
 		t = time.Now().UTC()

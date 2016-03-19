@@ -137,17 +137,23 @@ func main() {
 	fmt.Printf("\t\tJovian Decameter Radio Storm Forcast for:\n")
 	fmt.Printf("\t\t    %s\n", t)
 	fmt.Printf("\t\t\t\tuntil:\n\t\t    %s\n", endTime)
-	lz, loff := t.Local().Zone()
-	fmt.Printf("\t\t     Local time zone: %s (%05d)\n", lz, (loff / 60 / 60) * 100)
+	
+	var localHead, fmtStr string
 	if *lat != 0 && *lon != 0 {
+		lz, loff := t.Local().Zone()
+		fmt.Printf("\t\t     Local time zone: %s (%05d)\n", lz, (loff / 60 / 60) * 100)
 		fmt.Printf("\t\t   --- For coordinates %dº, %dº ---\n", *lat, *lon)
+		localHead = " HH:MM (local) |"
+		fmtStr = "%3d  %s %2d  %02d:%02d         %02d:%02d           %6.2f     %6.2f   %4.2f       %s\n"
+	} else {
+		fmtStr = "%3d  %s %2d  %02d:%02d         %6.2f     %6.2f   %4.2f       %s\n"
 	}
 	fmt.Printf("################################################################################\n")
-	fmt.Printf("DY | Date  | HH:MM (UTC) | HH:MM (local) | Io Phase | CML    | Dist(AU) | source\n")
+	fmt.Printf("DY | Date  | HH:MM (UTC) |%s Io Phase | CML    | Dist(AU) | source\n", localHead)
 	fmt.Printf("--------------------------------------------------------------------------------\n")
 
 	
-	fmtStr := "%3d  %s %2d  %02d:%02d         %02d:%02d           %6.2f     %6.2f   %4.2f       %s\n"
+	
 	for t.Before(endTime) {
 		jd := julian.TimeToJD(t)
 		var skip bool
@@ -183,8 +189,12 @@ func main() {
 			rSource := source(meridian, ioPhase)
 			
 			if rSource != "" {
-				l := t.Local()
-				fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), l.Hour(), l.Minute(), ioPhase, meridian, dist, rSource)
+				if *lat != 0 && *lon != 0 {
+					l := t.Local()
+					fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), l.Hour(), l.Minute(), ioPhase, meridian, dist, rSource)
+				} else {
+					fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), ioPhase, meridian, dist, rSource)
+				}
 			}
 		}
 		t = t.Add(time.Duration(*interval) * time.Minute)

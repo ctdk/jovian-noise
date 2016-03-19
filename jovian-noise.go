@@ -87,7 +87,7 @@ func main() {
 	flag.Parse()
 	
 	if *startTime == "" {
-		t = time.Now()
+		t = time.Now().UTC()
 	} else {
 		var err error
 		t, err = time.Parse(time.RFC3339, *startTime)
@@ -95,6 +95,7 @@ func main() {
 			log.Println(err)
 			os.Exit(1)
 		}
+		t = t.UTC()
 	}
 	if *lat != 0 && *lon == 0 || *lat == 0 && *lon != 0 {
 		log.Println("Both -lat and -lon, or neither, must be supplied")
@@ -116,8 +117,21 @@ func main() {
 		panic(err)
 	}
 	endTime := t.Add(*dur)
-	fmt.Printf("dy  mn  da hh:mm io     l3     dist  source\n")
-	fmtStr := "%3d %s %2d %02d:%02d %6.2f %6.2f %4.2f  %s\n"
+	fmt.Printf("################################################################################\n")
+	fmt.Printf("\t\tJovian Decameter Radio Storm Forcast for:\n")
+	fmt.Printf("\t\t%s\n", t)
+	fmt.Printf("\t\t\t\tuntil:\n\t\t%s\n", endTime)
+	lz, loff := t.Local().Zone()
+	fmt.Printf("\t\t     Local time zone: %s (%05d)\n", lz, (loff / 60 / 60) * 100)
+	if *lat != 0 && *lon != 0 {
+		fmt.Printf("\t\t   --- For coordinates %dº, %dº ---\n", *lat, *lon)
+	}
+	fmt.Printf("################################################################################\n")
+	fmt.Printf("DY | Date  | HH:MM (UTC) | HH:MM (local) | Io Phase | CML    | Dist(AU) | source\n")
+	fmt.Printf("--------------------------------------------------------------------------------\n")
+
+	
+	fmtStr := "%3d  %s %2d  %02d:%02d         %02d:%02d           %6.2f     %6.2f   %4.2f       %s\n"
 	for t.Before(endTime) {
 		jd := julian.TimeToJD(t)
 		var skip bool
@@ -153,7 +167,8 @@ func main() {
 			rSource := source(meridian, ioPhase)
 			
 			if rSource != "" {
-				fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), ioPhase, meridian, dist, rSource)
+				l := t.Local()
+				fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), l.Hour(), l.Minute(), ioPhase, meridian, dist, rSource)
 			}
 		}
 		t = t.Add(time.Duration(*interval) * time.Minute)

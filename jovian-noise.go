@@ -143,7 +143,7 @@ func main() {
 	}
 	endTime := t.Add(*dur - time.Second)
 	fmt.Printf("################################################################################\n")
-	fmt.Printf("\t\tJovian Decameter Radio Storm Forcast for:\n")
+	fmt.Printf("\t\tJovian Decameter Radio Storm Forecast for:\n")
 	fmt.Printf("\t\t    %s\n", t)
 	fmt.Printf("\t\t\t\tuntil:\n\t\t    %s\n", endTime)
 	

@@ -93,6 +93,7 @@ func main() {
 	lat := flag.Int("lat", 0, "Optional latitute. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lon")
 	lon := flag.Int("lon", 0, "Optional longitude. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lat")
 	ver := flag.Bool("version", false, "Print version number and exit.")
+	nonIoA := flag.Bool("non-io-a", false, "Include forecasts for the non-Io-A radio source.")
 
 	var t time.Time
 	flag.Parse()
@@ -198,11 +199,13 @@ func main() {
 			rSource := source(meridian, ioPhase)
 			
 			if rSource != "" {
-				if *lat != 0 && *lon != 0 {
-					l := t.Local()
-					fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), l.Hour(), l.Minute(), ioPhase, meridian, dist, rSource)
-				} else {
-					fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), ioPhase, meridian, dist, rSource)
+				if rSource != "non-Io-A" || *nonIoA {
+					if *lat != 0 && *lon != 0 {
+						l := t.Local()
+						fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), l.Hour(), l.Minute(), ioPhase, meridian, dist, rSource)
+					} else {
+						fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), ioPhase, meridian, dist, rSource)
+					}
 				}
 			}
 		}
@@ -253,12 +256,14 @@ func reg(a float64) float64 {
 func source(meridian float64, ioDeg float64) string {
 	var s string
 	switch {
-	case (meridian < 255 && meridian > 200) && (ioDeg < 250 && ioDeg > 220):
+	case (meridian <= 270 && meridian >= 200) && (ioDeg < 260 && ioDeg > 205):
 		s = "Io-A"
-	case (meridian < 180 && meridian > 105) && (ioDeg < 100 && ioDeg > 80):
+	case (meridian < 185 && meridian > 105) && (ioDeg < 110 && ioDeg > 80):
 		s = "Io-B"
-	case (meridian < 350 && meridian > 300) && (ioDeg < 250 && ioDeg > 230):
+	case (meridian < 360 && meridian > 300 || meridian < 20 && meridian > 0) && (ioDeg < 260 && ioDeg > 225):
 		s = "Io-C"
+	case (meridian < 280 && meridian > 230):
+		s = "non-Io-A"
 	}
 	return s
 }

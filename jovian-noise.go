@@ -86,6 +86,9 @@ var months = []string{
 
 const version string = "0.1.5"
 
+var toRad = math.Pi / 180
+var toDeg = 180 / math.Pi
+
 func main() {
 	startTime := flag.String("start-time", "", "Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to now)")
 	dur := flag.Duration("duration", 30 * 24 * time.Hour, "Duration (in golang ParseDuration format) from the start time to calculate the forecast")
@@ -129,7 +132,13 @@ func main() {
 	}
 	var risen bool
 	var coords globe.Coord
-	if *lat != 0 && *lat != 0 {
+	if *lat != 0 && *lon != 0 {
+		// for some reason this figures longitude backwards from
+		// the way everyone else does it.
+		*lon = -*lon
+		if *lon < 0 {
+			*lon += 360
+		}
 		coords.Lon = sexa.NewAngle(false, *lon, 0, 0).Rad()
 		coords.Lat = sexa.NewAngle(false, *lat, 0, 0).Rad()
 		risen = true
@@ -173,18 +182,18 @@ func main() {
 			if rounded.After(t) {
 				rounded = rounded.Add(-24 * time.Hour)
 			}
+			// subtle, but:
+			rjd := julian.TimeToJD(rounded)
 			secs := float64(t.Sub(rounded) / time.Second)
-			ra, dec := elliptic.Position(jupiter, earth, jd)
-			th0 := sidereal.Apparent0UT(jd)
+			ra, dec := elliptic.Position(jupiter, earth, rjd)
+			th0 := sidereal.Apparent0UT(rjd)
 			h0 := rise.Stdh0Stellar
 			rising, _, set, err := rise.ApproxTimes(coords, h0, th0, ra, dec)
 			if err != nil {
 				log.Println(err)
 				skip = true
 			}
-			if rising > secs || secs > set {
-				// Jupiter's not out! 
-				//log.Printf("no jupiter: secs %f rising %f set %f", secs, rising, set )
+			if !((rising < set && rising < secs && secs < set) || (rising > set && (secs > rising || secs < set))) {
 				skip = true
 			}
 		}
@@ -192,8 +201,8 @@ func main() {
 			el, _, eDist := earth.Position(jd)
 			jl, _, jDist := jupiter.Position(jd)
 			meridian := systemIIIMeridian(jd)
-			eLon := el * (180 / math.Pi)
-			jLon := jl * (180 / math.Pi)
+			eLon := el * toDeg
+			jLon := jl * toDeg
 			dist := distance(eLon, eDist, jLon, jDist)
 			ioPhase := ioPos(jd, dist)
 			rSource := source(meridian, ioPhase)
@@ -234,19 +243,19 @@ func ioPos(jd float64, dist float64) float64 {
 	// snagged the equations for this from
 	// https://github.com/akkana/scripts/blob/master/jsjupiter/jupiter.js
 	d := jd - 2415020
-	v := reg(134.63 + 0.00111587 * d * (math.Pi / 180));
-	eAnomaly := reg((358.476 + 0.9856003 * d) * (math.Pi / 180))
-	jAnomaly := reg((225.328 + 0.0830853 * d + 0.33 * math.Sin(v)) * (math.Pi / 180))
-	j := reg((221.647 + 0.9025179 * d - 0.33 * math.Sin(v)) * (math.Pi / 180))
-	a := reg((1.916 * math.Sin(eAnomaly) + 0.020 * math.Sin(2 * eAnomaly)) * math.Pi / 180)
-	b := reg((5.552 * math.Sin(jAnomaly) + 0.167 * math.Sin(2 * jAnomaly)) * math.Pi / 180)
+	v := reg(134.63 + 0.00111587 * d * toRad);
+	eAnomaly := reg((358.476 + 0.9856003 * d) * toRad)
+	jAnomaly := reg((225.328 + 0.0830853 * d + 0.33 * math.Sin(v)) * toRad)
+	j := reg((221.647 + 0.9025179 * d - 0.33 * math.Sin(v)) * toRad)
+	a := reg((1.916 * math.Sin(eAnomaly) + 0.020 * math.Sin(2 * eAnomaly)) * toRad)
+	b := reg((5.552 * math.Sin(jAnomaly) + 0.167 * math.Sin(2 * jAnomaly)) * toRad)
 	k := reg(j + a - b)
 	rvE := 1.00014 - 0.01672 * math.Cos(eAnomaly) - 0.00014 * math.Cos(2 * eAnomaly)
 	psi := math.Asin(rvE / dist * math.Sin(k))
 
-	ioAngle := reg((84.5506 + 203.4058630 * (d - dist / 173)) * (math.Pi / 180) + psi - b)
+	ioAngle := reg((84.5506 + 203.4058630 * (d - dist / 173)) * toRad + psi - b)
 
-	return math.Mod(ioAngle * (180 / math.Pi) + 180, 360)
+	return math.Mod(ioAngle * toDeg + 180, 360)
 }
 
 func reg(a float64) float64 {
@@ -270,7 +279,7 @@ func source(meridian float64, ioDeg float64) string {
 
 func distance(eLon, eDistance, jLon, jDistance float64) float64 {
 	angle := angleCalc(eLon, jLon)
-	d2 := math.Pow(eDistance, 2) + math.Pow(jDistance, 2) - 2 * eDistance * jDistance * math.Cos(angle * (math.Pi / 180))
+	d2 := math.Pow(eDistance, 2) + math.Pow(jDistance, 2) - 2 * eDistance * jDistance * math.Cos(angle * toRad)
 	d := math.Sqrt(d2)
 	return d
 }

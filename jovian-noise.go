@@ -163,7 +163,7 @@ func main() {
 		fmt.Printf("\t\t     Local time zone: %s (%05d)\n", lz, (loff / 60 / 60) * 100)
 		fmt.Printf("\t\t   --- For coordinates %dº, %dº ---\n", *lat, *lon)
 		localHead = " HH:MM (local) |"
-		fmtStr = "%3d  %s %2d  %02d:%02d         %02d:%02d           %6.2f     %6.2f   %4.2f       %s\n"
+		fmtStr = "%3d  %s %2d  %02d:%02d         %02d:%02d %s   %6.2f     %6.2f   %4.2f       %s\n"
 	} else {
 		fmtStr = "%3d  %s %2d  %02d:%02d         %6.2f     %6.2f   %4.2f       %s\n"
 	}
@@ -211,7 +211,13 @@ func main() {
 				if rSource != "non-Io-A" || *nonIoA {
 					if *lat != 0 && *lon != 0 {
 						l := t.Local()
-						fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), l.Hour(), l.Minute(), ioPhase, meridian, dist, rSource)
+						var localDay string
+						if l.Day() != t.Day() {
+							localDay = fmt.Sprintf("(%02d/%02d)", l.Month(), l.Day())
+						} else {
+							localDay = "       "
+						}
+						fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), l.Hour(), l.Minute(), localDay, ioPhase, meridian, dist, rSource)
 					} else {
 						fmt.Printf(fmtStr, t.YearDay(), months[t.Month()], t.Day(), t.Hour(), t.Minute(), ioPhase, meridian, dist, rSource)
 					}

@@ -63,9 +63,9 @@ import (
 	"github.com/soniakeys/meeus/sidereal"
 	"github.com/soniakeys/meeus/globe"
 	"github.com/soniakeys/meeus/rise"
-	sexa "github.com/soniakeys/sexagesimal"
 	"github.com/soniakeys/meeus/julian"
 	pp "github.com/soniakeys/meeus/planetposition"
+	"github.com/soniakeys/unit"
 )
 
 var months = []string{
@@ -87,7 +87,7 @@ var months = []string{
 const version string = "0.1.5"
 
 var toRad = math.Pi / 180
-var toDeg = 180 / math.Pi
+var toDeg = unit.Angle(180 / math.Pi)
 
 func main() {
 	startTime := flag.String("start-time", "", "Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to now)")
@@ -139,8 +139,8 @@ func main() {
 		if *lon < 0 {
 			*lon += 360
 		}
-		coords.Lon = sexa.NewAngle(false, *lon, 0, 0).Rad()
-		coords.Lat = sexa.NewAngle(false, *lat, 0, 0).Rad()
+		coords.Lon = unit.NewAngle('+', *lon, 0, 0)
+		coords.Lat = unit.NewAngle('+', *lat, 0, 0)
 		risen = true
 	}
 	earth, err := pp.LoadPlanet(pp.Earth)
@@ -184,7 +184,7 @@ func main() {
 			}
 			// subtle, but:
 			rjd := julian.TimeToJD(rounded)
-			secs := float64(t.Sub(rounded) / time.Second)
+			secs := unit.Time(t.Sub(rounded) / time.Second)
 			ra, dec := elliptic.Position(jupiter, earth, rjd)
 			th0 := sidereal.Apparent0UT(rjd)
 			h0 := rise.Stdh0Stellar
@@ -201,8 +201,8 @@ func main() {
 			el, _, eDist := earth.Position(jd)
 			jl, _, jDist := jupiter.Position(jd)
 			meridian := systemIIIMeridian(jd)
-			eLon := el * toDeg
-			jLon := jl * toDeg
+			eLon := float64(el * toDeg)
+			jLon := float64(jl * toDeg)
 			dist := distance(eLon, eDist, jLon, jDist)
 			ioPhase := ioPos(jd, dist)
 			rSource := source(meridian, ioPhase)
@@ -261,7 +261,7 @@ func ioPos(jd float64, dist float64) float64 {
 
 	ioAngle := reg((84.5506 + 203.4058630 * (d - dist / 173)) * toRad + psi - b)
 
-	return math.Mod(ioAngle * toDeg + 180, 360)
+	return math.Mod(ioAngle * float64(toDeg) + 180, 360)
 }
 
 func reg(a float64) float64 {

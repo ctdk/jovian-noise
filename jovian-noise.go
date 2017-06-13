@@ -84,7 +84,7 @@ var months = []string{
 	"Dec",
 }
 
-const version string = "0.1.5"
+const version string = "0.1.6"
 
 var toRad = math.Pi / 180
 var toDeg = unit.Angle(180 / math.Pi)

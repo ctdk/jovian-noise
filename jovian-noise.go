@@ -2,7 +2,7 @@
 // http://www.spaceacademy.net.au/spacelab/projects/jovrad/jovrad.htm,
 // but extended and updated with some external libraries.
 //
-// Copyright 2016 Jeremy Bingham, under the MIT License.
+// Copyright 2016-2022 Jeremy Bingham, under the MIT License.
 // See the LICENSE file in this repository, or 
 // http://www.opensource.org/licenses/MIT
 
@@ -47,7 +47,7 @@ More Information about Jupiter amateur radio astronomy
 
 License
 
-Copyright 2016, Jeremy Bingham, under the terms of the MIT License.
+Copyright 2016-2022, Jeremy Bingham, under the terms of the MIT License.
 
 */
 package main
@@ -59,12 +59,12 @@ import (
 	"math"
 	"os"
 	"time"
-	"github.com/soniakeys/meeus/elliptic"
-	"github.com/soniakeys/meeus/sidereal"
-	"github.com/soniakeys/meeus/globe"
-	"github.com/soniakeys/meeus/rise"
-	"github.com/soniakeys/meeus/julian"
-	pp "github.com/soniakeys/meeus/planetposition"
+	"github.com/soniakeys/meeus/v3/elliptic"
+	"github.com/soniakeys/meeus/v3/sidereal"
+	"github.com/soniakeys/meeus/v3/globe"
+	"github.com/soniakeys/meeus/v3/rise"
+	"github.com/soniakeys/meeus/v3/julian"
+	pp "github.com/soniakeys/meeus/v3/planetposition"
 	"github.com/soniakeys/unit"
 )
 
@@ -84,13 +84,13 @@ var months = []string{
 	"Dec",
 }
 
-const version string = "0.1.6"
+const version string = "0.2.0"
 
 var toRad = math.Pi / 180
 var toDeg = unit.Angle(180 / math.Pi)
 
 func main() {
-	startTime := flag.String("start-time", "", "Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to now)")
+	startTime := flag.String("start-time", "", "Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to the start of the current hour)")
 	dur := flag.Duration("duration", 30 * 24 * time.Hour, "Duration (in golang ParseDuration format) from the start time to calculate the forecast")
 	interval := flag.Int("interval", 30, "Interval in minutes to calculate the forecast")
 	lat := flag.Int("lat", 0, "Optional latitute. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lon")
@@ -116,7 +116,7 @@ func main() {
 	}
 
 	if *startTime == "" {
-		t = time.Now().UTC()
+		t = time.Now().UTC().Truncate(time.Hour)
 	} else {
 		var err error
 		t, err = time.Parse(time.RFC3339, *startTime)
@@ -132,9 +132,12 @@ func main() {
 	}
 	var risen bool
 	var coords globe.Coord
+	var dispLon int
+
 	if *lat != 0 && *lon != 0 {
 		// for some reason this figures longitude backwards from
 		// the way everyone else does it.
+		dispLon = *lon
 		*lon = -*lon
 		if *lon < 0 {
 			*lon += 360
@@ -161,7 +164,7 @@ func main() {
 	if *lat != 0 && *lon != 0 {
 		lz, loff := t.Local().Zone()
 		fmt.Printf("\t\t     Local time zone: %s (%05d)\n", lz, (loff / 60 / 60) * 100)
-		fmt.Printf("\t\t   --- For coordinates %dº, %dº ---\n", *lat, *lon)
+		fmt.Printf("\t\t   --- For coordinates %dº, %dº ---\n", *lat, dispLon)
 		localHead = " HH:MM (local) |"
 		fmtStr = "%3d  %s %2d  %02d:%02d         %02d:%02d %s   %6.2f     %6.2f   %4.2f       %s\n"
 	} else {
@@ -171,30 +174,42 @@ func main() {
 	fmt.Printf("DY | Date  | HH:MM (UTC) |%s Io Phase | CML    | Dist(AU) | source\n", localHead)
 	fmt.Printf("--------------------------------------------------------------------------------\n")
 
-	
-	
+	var jupPositions map[int64]*jupiterPosition
+
+	if risen {
+		// Calculate Jupiter's positions ahead of time.
+		jupPositions = make(map[int64]*jupiterPosition, endTime.Sub(t) / time.Hour / 24 / 2)
+
+		tJup := t
+		for tJup.Before(endTime.Add(24 * time.Hour)) {
+			rounded := tJup.Truncate(24 * time.Hour)
+			// subtle, but:
+			rjd := julian.TimeToJD(rounded)
+			ra, dec := elliptic.Position(jupiter, earth, rjd)
+			th0 := sidereal.Apparent0UT(rjd)
+			h0 := rise.Stdh0Stellar
+			rising, transit, set, err := rise.ApproxTimes(coords, h0, th0, ra, dec)
+			if err != nil {
+				log.Fatal(err)
+			}
+			jp := &jupiterPosition{entryDate: rounded, rising: rising, transit: transit, set: set, ra: ra, dec: dec}
+			jupPositions[rounded.Unix()/100] = jp
+
+			tJup = tJup.Add(24 * time.Hour)
+		}
+	}
+
 	for t.Before(endTime) {
 		jd := julian.TimeToJD(t)
 		var skip bool
 		if risen {
 			// round the day off
-			rounded := t.Round(24 * time.Hour)
-			if rounded.After(t) {
-				rounded = rounded.Add(-24 * time.Hour)
-			}
-			// subtle, but:
-			rjd := julian.TimeToJD(rounded)
+			rounded := t.Truncate(24 * time.Hour)
 			secs := unit.Time(t.Sub(rounded) / time.Second)
-			ra, dec := elliptic.Position(jupiter, earth, rjd)
-			th0 := sidereal.Apparent0UT(rjd)
-			h0 := rise.Stdh0Stellar
-			rising, _, set, err := rise.ApproxTimes(coords, h0, th0, ra, dec)
-			if err != nil {
-				log.Println(err)
-				skip = true
-			}
-			if !((rising < set && rising < secs && secs < set) || (rising > set && (secs > rising || secs < set))) {
-				skip = true
+			if jp, ok := jupPositions[rounded.Unix()/100]; ok {
+				skip = jp.Skip(secs)
+			} else {
+				log.Fatalf("Strange, no precalculated Jupiter position for %v under key %d was found.", rounded, rounded.Unix()/100)
 			}
 		}
 		if !skip {

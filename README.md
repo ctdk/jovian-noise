@@ -36,4 +36,4 @@ Many web pages went into getting this together. The most immediately useful for 
 
 ### License
 
-Copyright 2016, Jeremy Bingham, under the terms of the MIT License.
+Copyright 2016-2022, Jeremy Bingham, under the terms of the MIT License.

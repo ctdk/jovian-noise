@@ -43,17 +43,17 @@ func reg(a float64) float64 {
 	return math.Mod(a, 2 * math.Pi)
 }
 
-func source(meridian float64, ioDeg float64) string {
-	var s string
+func source(meridian float64, ioDeg float64) radioSource {
+	var s radioSource
 	switch {
 	case (meridian <= 270 && meridian >= 200) && (ioDeg < 260 && ioDeg > 205):
-		s = "Io-A"
+		s = IoA
 	case (meridian < 185 && meridian > 105) && (ioDeg < 110 && ioDeg > 80):
-		s = "Io-B"
+		s = IoB
 	case (meridian < 360 && meridian > 300 || meridian < 20 && meridian > 0) && (ioDeg < 260 && ioDeg > 225):
-		s = "Io-C"
+		s = IoC
 	case (meridian < 280 && meridian > 230):
-		s = "non-Io-A"
+		s = NonIoA
 	}
 	return s
 }

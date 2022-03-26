@@ -53,18 +53,21 @@ Copyright 2016-2022, Jeremy Bingham, under the terms of the MIT License.
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"math"
 	"os"
 	"time"
+	"github.com/soniakeys/meeus/v3/coord"
 	"github.com/soniakeys/meeus/v3/elliptic"
 	"github.com/soniakeys/meeus/v3/sidereal"
 	"github.com/soniakeys/meeus/v3/globe"
 	"github.com/soniakeys/meeus/v3/rise"
 	"github.com/soniakeys/meeus/v3/julian"
 	pp "github.com/soniakeys/meeus/v3/planetposition"
+	"github.com/soniakeys/sexagesimal"
 	"github.com/soniakeys/unit"
 )
 
@@ -85,18 +88,23 @@ var shortMonths = []string{
 }
 
 const version string = "0.2.0"
+const jpFormat string = "2006-01-02"
+const oneDay time.Duration = 24 * time.Hour
 
 var toRad = math.Pi / 180
 var toDeg = unit.Angle(180 / math.Pi)
 
 func main() {
 	startTime := flag.String("start-time", "", "Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to the start of the current hour)")
-	dur := flag.Duration("duration", 30 * 24 * time.Hour, "Duration (in golang ParseDuration format) from the start time to calculate the forecast")
+	dur := flag.Duration("duration", 30 * oneDay, "Duration (in golang ParseDuration format) from the start time to calculate the forecast")
 	interval := flag.Int("interval", 30, "Interval in minutes to calculate the forecast")
 	lat := flag.Int("lat", 0, "Optional latitute. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lon")
 	lon := flag.Int("lon", 0, "Optional longitude. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lat")
 	ver := flag.Bool("version", false, "Print version number and exit.")
 	nonIoA := flag.Bool("non-io-a", false, "Include forecasts for the non-Io-A radio source.")
+
+	jData := new(jupiterData)
+	jData.Intervals = make([]*forecastInterval, 0)
 
 	var t time.Time
 	flag.Parse()
@@ -115,6 +123,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	jData.Duration = *dur
+	jData.Interval = *interval
+
 	if *startTime == "" {
 		t = time.Now().UTC().Truncate(time.Hour)
 	} else {
@@ -126,6 +137,8 @@ func main() {
 		}
 		t = t.UTC()
 	}
+	jData.StartTime = t
+
 	if *lat != 0 && *lon == 0 || *lat == 0 && *lon != 0 {
 		log.Println("Both -lat and -lon, or neither, must be supplied")
 		os.Exit(1)
@@ -137,6 +150,7 @@ func main() {
 	if *lat != 0 && *lon != 0 {
 		// for some reason this figures longitude backwards from
 		// the way everyone else does it.
+		jData.DisplayLongitude = *lon
 		dispLon = *lon
 		*lon = -*lon
 		if *lon < 0 {
@@ -145,6 +159,9 @@ func main() {
 		coords.Lon = unit.NewAngle('+', *lon, 0, 0)
 		coords.Lat = unit.NewAngle('+', *lat, 0, 0)
 		risen = true
+		jData.Coords = coords
+		jData.LocalForecast = true
+		jData.DisplayLongitude = dispLon
 	}
 	earth, err := pp.LoadPlanet(pp.Earth)
 	if err != nil {
@@ -155,34 +172,17 @@ func main() {
 		panic(err)
 	}
 	endTime := t.Add(*dur - time.Second)
-	fmt.Printf("################################################################################\n")
-	fmt.Printf("\t\tJovian Decameter Radio Storm Forecast for:\n")
-	fmt.Printf("\t\t    %s\n", t)
-	fmt.Printf("\t\t\t\tuntil:\n\t\t    %s\n", endTime)
-	
-	var localHead, fmtStr string
-	if *lat != 0 && *lon != 0 {
-		lz, loff := t.Local().Zone()
-		fmt.Printf("\t\t     Local time zone: %s (%05d)\n", lz, (loff / 60 / 60) * 100)
-		fmt.Printf("\t\t   --- For coordinates %dº, %dº ---\n", *lat, dispLon)
-		localHead = " HH:MM (local) |"
-		fmtStr = "%3d  %s %2d  %02d:%02d         %02d:%02d %s   %6.2f     %6.2f   %4.2f       %s\n"
-	} else {
-		fmtStr = "%3d  %s %2d  %02d:%02d         %6.2f     %6.2f   %4.2f       %s\n"
-	}
-	fmt.Printf("################################################################################\n")
-	fmt.Printf("DY | Date  | HH:MM (UTC) |%s Io Phase | CML    | Dist(AU) | source\n", localHead)
-	fmt.Printf("--------------------------------------------------------------------------------\n")
+	jData.EndTime = endTime
 
-	var jupPositions map[int64]*jupiterPosition
+	var jupPositions map[string]*jupiterPosition
 
 	if risen {
 		// Calculate Jupiter's positions ahead of time.
-		jupPositions = make(map[int64]*jupiterPosition, endTime.Sub(t) / time.Hour / 24 / 2)
+		jupPositions = make(map[string]*jupiterPosition, endTime.Sub(t) / time.Hour / 24 / 2)
 
-		tJup := t
-		for tJup.Before(endTime.Add(24 * time.Hour)) {
-			rounded := tJup.Truncate(24 * time.Hour)
+		tJup := t.Add(-oneDay)
+		for tJup.Before(endTime.Add(2 * oneDay)) {
+			rounded := tJup.Truncate(oneDay)
 			// subtle, but:
 			rjd := julian.TimeToJD(rounded)
 			ra, dec := elliptic.Position(jupiter, earth, rjd)
@@ -192,53 +192,72 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			jp := &jupiterPosition{entryDate: rounded, rising: rising, transit: transit, set: set, ra: ra, dec: dec}
-			jupPositions[rounded.Unix()/100] = jp
+			jp := &jupiterPosition{EntryDate: rounded, Rising: rising, Transit: transit, Set: set, RA: ra, Dec: dec}
+			jupPositions[rounded.Format(jpFormat)] = jp
 
-			tJup = tJup.Add(24 * time.Hour)
+			tJup = tJup.Add(oneDay)
 		}
+		jData.JupiterPositions = jupPositions
 	}
 
 	for t.Before(endTime) {
 		jd := julian.TimeToJD(t)
 		var skip bool
+		var jp *jupiterPosition
 		if risen {
 			// round the day off
-			rounded := t.Truncate(24 * time.Hour)
+			var ok bool
+			rounded := t.Truncate(oneDay)
 			secs := unit.Time(t.Sub(rounded) / time.Second)
-			if jp, ok := jupPositions[rounded.Unix()/100]; ok {
+			if jp, ok = jupPositions[rounded.Format(jpFormat)]; ok {
 				skip = jp.Skip(secs)
 			} else {
-				log.Fatalf("Strange, no precalculated Jupiter position for %v under key %d was found.", rounded, rounded.Unix()/100)
+				log.Fatalf("Strange, no precalculated Jupiter position for %v under key %s was found.", rounded, rounded.Format(jpFormat))
 			}
 		}
 		if !skip {
-			el, _, eDist := earth.Position(jd)
-			jl, _, jDist := jupiter.Position(jd)
+			el, _, eDist := earth.Position2000(jd)
+			jl, _, jDist := jupiter.Position2000(jd)
 			meridian := systemIIIMeridian(jd)
 			eLon := float64(el * toDeg)
 			jLon := float64(jl * toDeg)
 			dist := distance(eLon, eDist, jLon, jDist)
 			ioPhase := ioPos(jd, dist)
 			rSource := source(meridian, ioPhase)
-			
-			if rSource != "" {
-				if rSource != "non-Io-A" || *nonIoA {
-					if *lat != 0 && *lon != 0 {
-						l := t.Local()
-						var localDay string
-						if l.Day() != t.Day() {
-							localDay = fmt.Sprintf("(%02d/%02d)", l.Month(), l.Day())
-						} else {
-							localDay = "       "
-						}
-						fmt.Printf(fmtStr, t.YearDay(), shortMonths[t.Month()], t.Day(), t.Hour(), t.Minute(), l.Hour(), l.Minute(), localDay, ioPhase, meridian, dist, rSource)
-					} else {
-						fmt.Printf(fmtStr, t.YearDay(), shortMonths[t.Month()], t.Day(), t.Hour(), t.Minute(), ioPhase, meridian, dist, rSource)
+
+			if rSource != NoEvent && (rSource != NonIoA || *nonIoA) {
+				fi := new(forecastInterval)
+				fi.Instant = t
+				fi.IoPhase = ioPhase
+				fi.Meridian = meridian
+				fi.Distance = dist
+				fi.RadioSource = rSource
+
+				if jData.LocalForecast {
+					cur := float64(t.Sub(jp.EntryDate) / time.Second)
+					correctTransit, err := jData.GetCorrectTransit(t)
+					if err != nil {
+						log.Fatal(err)
 					}
+					diff := cur - float64(correctTransit)
+					fi.TransitHA = unit.HourAngleFromSec(diff)
+					az, alt := coord.EqToHz(jp.RA, jp.Dec, jData.Coords.Lat, jData.Coords.Lon, sidereal.Apparent(jd)) 
+					fi.AltAz = hzCoords{Altitude: alt, Azimuth: az + math.Pi}
 				}
+				jData.Intervals = append(jData.Intervals, fi)
 			}
 		}
 		t = t.Add(time.Duration(*interval) * time.Minute)
+	}
+
+	if j, err := json.MarshalIndent(jData, "", "\t"); err != nil {
+		log.Fatal(err)
+	} else {
+		os.Stdout.Write(j)
+	}
+
+	fmt.Printf("\n\n\n")
+	for _, fi := range jData.Intervals {
+		fmt.Printf("Time: %v :: %s ::  %f :: %+.3j %+.3j\n", fi.Instant, fi.RadioSource, fi.TransitHA.Hour(), sexa.FmtAngle(fi.AltAz.Altitude), sexa.FmtAngle(fi.AltAz.Azimuth))
 	}
 }

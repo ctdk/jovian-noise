@@ -4,6 +4,9 @@ import (
 	"math"
 )
 
+// TODO: These really ought to be changed to use radians to reduce the amount
+// of conversions back and forth between radians and degrees.
+
 // from http://www.projectpluto.com/grs_form.htm
 func meridianCorrection(jd float64) float64 {
 	jupMean := (jd - 2455636.938) * 360 / 4332.89709
@@ -70,11 +73,9 @@ func angleCalc(e, j float64) float64 {
 	var b float64
 	var angle float64
 	if e < j {
-		a = e
-		b = j
+		a, b = e, j
 	} else {
-		b = e
-		a = j
+		b, a = e, j
 	}
 	c1 := b - a
 	c2 := 360 + a - b

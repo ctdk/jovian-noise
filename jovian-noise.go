@@ -143,7 +143,6 @@ func main() {
 		log.Println("Both -lat and -lon, or neither, must be supplied")
 		os.Exit(1)
 	}
-	var risen bool
 	var coords globe.Coord
 	var dispLon int
 
@@ -158,7 +157,6 @@ func main() {
 		}
 		coords.Lon = unit.NewAngle('+', *lon, 0, 0)
 		coords.Lat = unit.NewAngle('+', *lat, 0, 0)
-		risen = true
 		jData.Coords = coords
 		jData.LocalForecast = true
 		jData.DisplayLongitude = dispLon
@@ -176,7 +174,7 @@ func main() {
 
 	var jupPositions map[string]*jupiterPosition
 
-	if risen {
+	if jData.LocalForecast {
 		// Calculate Jupiter's positions ahead of time.
 		jupPositions = make(map[string]*jupiterPosition, endTime.Sub(t) / time.Hour / 24 / 2)
 
@@ -204,7 +202,7 @@ func main() {
 		jd := julian.TimeToJD(t)
 		var skip bool
 		var jp *jupiterPosition
-		if risen {
+		if jData.LocalForecast {
 			// round the day off
 			var ok bool
 			rounded := t.Truncate(oneDay)
@@ -242,7 +240,7 @@ func main() {
 					diff := cur - float64(correctTransit)
 					fi.TransitHA = unit.HourAngleFromSec(diff)
 					az, alt := coord.EqToHz(jp.RA, jp.Dec, jData.Coords.Lat, jData.Coords.Lon, sidereal.Apparent(jd)) 
-					fi.AltAz = hzCoords{Altitude: alt, Azimuth: az + math.Pi}
+					fi.AltAz = &hzCoords{Altitude: alt, Azimuth: az + math.Pi}
 				}
 				jData.Intervals = append(jData.Intervals, fi)
 			}
@@ -258,6 +256,6 @@ func main() {
 
 	fmt.Printf("\n\n\n")
 	for _, fi := range jData.Intervals {
-		fmt.Printf("Time: %v :: %s ::  %f :: %+.3j %+.3j\n", fi.Instant, fi.RadioSource, fi.TransitHA.Hour(), sexa.FmtAngle(fi.AltAz.Altitude), sexa.FmtAngle(fi.AltAz.Azimuth))
+		fmt.Printf("Time: %v :: %s ::  %f :: %+.3j %+.3j %v\n", fi.Instant, fi.RadioSource, fi.TransitHA.Hour(), sexa.FmtAngle(fi.AltAz.Altitude), sexa.FmtAngle(fi.AltAz.Azimuth), fi.Recommended())
 	}
 }

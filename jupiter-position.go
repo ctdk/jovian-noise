@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/soniakeys/meeus/v3/globe"
 	"github.com/soniakeys/unit"
@@ -9,22 +10,18 @@ import (
 )
 
 type jupiterPosition struct {
-	EntryDate time.Time
-	Rising unit.Time
-	Transit unit.Time
-	Set unit.Time
-	RA unit.RA
-	Dec unit.Angle
+	EntryDate time.Time `json:"entry_date"`
+	Rising unit.Time `json:"rising"`
+	Transit unit.Time `json:"transit"`
+	Set unit.Time `json:"set"`
+	RA unit.RA `json:"ra"`
+	Dec unit.Angle `json:"dec"`
 }
 
 type radioSource int
 
-const dayUnitTime unit.Time = 24 * 60 * 60 // 86400
-
-const recommendCutoff float64 = 3.0
-
 const (
-	NoEvent = iota
+	NoEvent radioSource = iota
 	IoA
 	IoB
 	IoC
@@ -38,43 +35,92 @@ var radioSourceNames = []string{
 	"non-Io-A",
 }
 
+const dayUnitTime unit.Time = 24 * 60 * 60 // 86400
+const recommendCutoff float64 = 3.0
+
 type hzCoords struct {
-	Altitude unit.Angle
-	Azimuth unit.Angle
+	Altitude unit.Angle `json:"altitude"`
+	Azimuth unit.Angle `json:"azimuth"`
 }
 
 type jupiterData struct {
-	StartTime time.Time
-	EndTime time.Time
-	Duration time.Duration
-	Interval int
-	Coords globe.Coord
-	DisplayLongitude int
-	LocalForecast bool
-	JupiterPositions map[string]*jupiterPosition
-	Intervals []*forecastInterval
+	StartTime time.Time `json:"start_time"`
+	EndTime time.Time `json:"end_time"`
+	Duration time.Duration `json:"duration"`
+	Interval int `json:"interval"`
+	Coords globe.Coord `json:"coords"`
+	DisplayLongitude int `json:"display_longitude"`
+	LocalForecast bool `json:"local_forecast"`
+	JupiterPositions map[string]*jupiterPosition `json:"jupiter_positions,omitempty"`
+	Intervals []*forecastInterval `json:"intervals"`
 }
 
 type forecastInterval struct {
-	Instant time.Time
-	IoPhase float64
-	Meridian float64
-	Distance float64
-	RadioSource radioSource
-	TransitHA unit.HourAngle
-	AltAz hzCoords
+	Instant time.Time `json:"instant"`
+	IoPhase float64 `json:"io_phase"`
+	Meridian float64 `json:"meridian"`
+	Distance float64 `json:"distance"`
+	RadioSource radioSource `json:"radio_source"`
+	TransitHA unit.HourAngle `json:"transit_ha"`
+	AltAz *hzCoords `json:"altaz,omitempty"`
 }
 
 func (s radioSource) String() string {
 	return radioSourceNames[s-1]
 }
 
+func RadioSourceFromString(rs string) (radioSource, error) {
+	var source radioSource
+	for k, v := range radioSourceNames {
+		if v == rs {
+			source = radioSource(k) + 1
+		}
+	}
+	if source == 0 {
+		return NoEvent, fmt.Errorf("The name '%s' is not a valid radio source.", rs)
+	}
+	return source, nil
+}
+
 func (jp *jupiterPosition) Skip(secs unit.Time) bool {
 	return !((jp.Rising < jp.Set && jp.Rising < secs && secs < jp.Set) || (jp.Rising > jp.Set && (secs > jp.Rising || secs < jp.Set)))
 }
 
-func (fi *forecastInterval) recommended() bool {
-	return math.Abs(float64(fi.TransitHA)) < recommendCutoff
+func (fi *forecastInterval) Recommended() bool {
+	if fi.AltAz == nil {
+		return false
+	}
+	return math.Abs(float64(fi.TransitHA.Hour())) < recommendCutoff
+}
+
+func (fi *forecastInterval) MarshalJSON() ([]byte, error) {
+	type Alias forecastInterval
+	return json.Marshal(&struct {
+		RadioSource string `json:"radio_source"`
+		*Alias
+	}{
+		RadioSource: fi.RadioSource.String(),
+		Alias: (*Alias)(fi),
+	})
+}
+
+func (fi *forecastInterval) UnmarshalJSON(data []byte) error {
+	type Jfi forecastInterval
+	nj :=  &struct {
+		RadioSource string `json:"radio_source"`
+		*Jfi
+	}{
+		Jfi: (*Jfi)(fi),
+	}
+	if err := json.Unmarshal(data, &nj); err != nil {
+		return err
+	}
+	rs, err := RadioSourceFromString(nj.RadioSource)
+	if err != nil {
+		return err
+	}
+	fi.RadioSource = rs
+	return nil
 }
 
 func (jd *jupiterData) GetCorrectTransit(entryDate time.Time) (unit.Time, error) {
@@ -108,7 +154,7 @@ func (jd *jupiterData) GetCorrectTransit(entryDate time.Time) (unit.Time, error)
 		// next day
 		njp, ok := jd.JupiterPositions[rounded.Add(oneDay).Format(jpFormat)]
 		if !ok {
-			return 0, fmt.Errorf("No Jupiter position available for the day after %s", rounded.Format(jpFormat))
+			return 0, fmt.Errorf("No Jupiter position available for the day after %s.", rounded.Format(jpFormat))
 		}
 		offset := dayUnitTime - cur
 		trn = njp.Transit + offset

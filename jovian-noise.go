@@ -53,7 +53,6 @@ Copyright 2016-2022, Jeremy Bingham, under the terms of the MIT License.
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -98,10 +97,13 @@ func main() {
 	startTime := flag.String("start-time", "", "Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to the start of the current hour)")
 	dur := flag.Duration("duration", 30 * oneDay, "Duration (in golang ParseDuration format) from the start time to calculate the forecast")
 	interval := flag.Int("interval", 30, "Interval in minutes to calculate the forecast")
+	tz := flag.String("timezone", "", "Optional timezone for displaying results. Conflicts with -offset-hours.")
+	offsetHours := flag.Float64("offset-hours", 0, "Optional offset in hours east of UTC to display results. Offsets to the west should be given with negative numbers (e.g. '-offset-hours -7'). Conflicts with -timezone.")
 	lat := flag.Int("lat", 0, "Optional latitute. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lon")
 	lon := flag.Int("lon", 0, "Optional longitude. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lat")
 	ver := flag.Bool("version", false, "Print version number and exit.")
 	nonIoA := flag.Bool("non-io-a", false, "Include forecasts for the non-Io-A radio source.")
+	output := flag.String("output", "text", "How to format the forecast for output. Currently acceptable options are: text (default), json.")
 
 	jData := new(jupiterData)
 	jData.Intervals = make([]*forecastInterval, 0)
@@ -120,6 +122,11 @@ func main() {
 	}
 	if *dur < time.Duration(*interval) * time.Minute {
 		fmt.Printf("-duration really should be longer than the interval specified.\n")
+		os.Exit(1)
+	}
+
+	if *tz != "" && math.Round(*offsetHours) != 0 {
+		fmt.Printf("One or the other of -timezone and -offset-hours can be specified, but not both. Neither is required, however.")
 		os.Exit(1)
 	}
 
@@ -248,14 +255,23 @@ func main() {
 		t = t.Add(time.Duration(*interval) * time.Minute)
 	}
 
-	if j, err := json.MarshalIndent(jData, "", "\t"); err != nil {
-		log.Fatal(err)
-	} else {
-		os.Stdout.Write(j)
-	}
-
-	fmt.Printf("\n\n\n")
+	/* fmt.Printf("\n\n\n")
 	for _, fi := range jData.Intervals {
 		fmt.Printf("Time: %v :: %s ::  %f :: %+.3j %+.3j %v\n", fi.Instant, fi.RadioSource, fi.TransitHA.Hour(), sexa.FmtAngle(fi.AltAz.Altitude), sexa.FmtAngle(fi.AltAz.Azimuth), fi.Recommended())
 	}
+	*/
+
+	switch output {
+	case "text":
+		if err := outputText(jData); err != nil {
+			log.Fatal(err)
+		}
+	case "json":
+		if err := outputJSON(jData); err != nil {
+			log.Fatal(err)
+		}
+	default:
+		log.Fatalf("Output format '%s' is not a valid selection. Aborting.", output)
+	}
+	os.Exit(0)
 }

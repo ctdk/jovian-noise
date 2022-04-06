@@ -10,12 +10,12 @@ import (
 )
 
 type jupiterPosition struct {
-	EntryDate time.Time `json:"entry_date"`
-	Rising unit.Time `json:"rising"`
-	Transit unit.Time `json:"transit"`
-	Set unit.Time `json:"set"`
-	RA unit.RA `json:"ra"`
-	Dec unit.Angle `json:"dec"`
+	EntryDate time.Time  `json:"entry_date"`
+	Rising    unit.Time  `json:"rising"`
+	Transit   unit.Time  `json:"transit"`
+	Set       unit.Time  `json:"set"`
+	RA        unit.RA    `json:"ra"`
+	Dec       unit.Angle `json:"dec"`
 }
 
 type radioSource int
@@ -40,29 +40,29 @@ const recommendCutoff float64 = 3.0
 
 type hzCoords struct {
 	Altitude unit.Angle `json:"altitude"`
-	Azimuth unit.Angle `json:"azimuth"`
+	Azimuth  unit.Angle `json:"azimuth"`
 }
 
 type jupiterData struct {
-	StartTime time.Time `json:"start_time"`
-	EndTime time.Time `json:"end_time"`
-	Duration time.Duration `json:"duration"`
-	Interval int `json:"interval"`
-	Coords globe.Coord `json:"coords"`
-	DisplayLongitude int `json:"display_longitude"`
-	LocalForecast bool `json:"local_forecast"`
+	StartTime        time.Time                   `json:"start_time"`
+	EndTime          time.Time                   `json:"end_time"`
+	Duration         time.Duration               `json:"duration"`
+	Interval         int                         `json:"interval"`
+	Coords           globe.Coord                 `json:"coords"`
+	LocalForecast    bool                        `json:"local_forecast"`
+	Location         *time.Location              `json:"location_data"`
 	JupiterPositions map[string]*jupiterPosition `json:"jupiter_positions,omitempty"`
-	Intervals []*forecastInterval `json:"intervals"`
+	Intervals        []*forecastInterval         `json:"intervals"`
 }
 
 type forecastInterval struct {
-	Instant time.Time `json:"instant"`
-	IoPhase float64 `json:"io_phase"`
-	Meridian float64 `json:"meridian"`
-	Distance float64 `json:"distance"`
-	RadioSource radioSource `json:"radio_source"`
-	TransitHA unit.HourAngle `json:"transit_ha"`
-	AltAz *hzCoords `json:"altaz,omitempty"`
+	Instant     time.Time      `json:"instant"`
+	IoPhase     unit.Angle     `json:"io_phase"`
+	Meridian    unit.Angle     `json:"meridian"`
+	Distance    float64        `json:"distance"`
+	RadioSource radioSource    `json:"radio_source"`
+	TransitHA   unit.HourAngle `json:"transit_ha"`
+	AltAz       *hzCoords      `json:"altaz,omitempty"`
 }
 
 func (s radioSource) String() string {
@@ -100,13 +100,13 @@ func (fi *forecastInterval) MarshalJSON() ([]byte, error) {
 		*Alias
 	}{
 		RadioSource: fi.RadioSource.String(),
-		Alias: (*Alias)(fi),
+		Alias:       (*Alias)(fi),
 	})
 }
 
 func (fi *forecastInterval) UnmarshalJSON(data []byte) error {
 	type Jfi forecastInterval
-	nj :=  &struct {
+	nj := &struct {
 		RadioSource string `json:"radio_source"`
 		*Jfi
 	}{

@@ -1,2 +1,3 @@
-* Add non-Io radio event sources
-* Format the output to look nicer and be more clear
+* Use the more accurate equations for calculating Io's position from Meeus' book.
+* CSV output, perhaps
+* Options for more or less detailed output.

@@ -3,7 +3,7 @@
 // but extended and updated with some external libraries.
 //
 // Copyright 2016-2022 Jeremy Bingham, under the MIT License.
-// See the LICENSE file in this repository, or 
+// See the LICENSE file in this repository, or
 // http://www.opensource.org/licenses/MIT
 
 /*
@@ -13,19 +13,31 @@ This program should be reasonably accurate, but there's always a possibility tha
 
 This was originally inspired by a QBASIC program at http://www.spaceacademy.net.au/spacelab/projects/jovrad/jovrad.htm, but uses external libraries for many of the calculations and can optionally limit the returned results to when Jupiter will be above the horizon at your location.
 
-To run this program, you will need to obtain the VSOP87 files for planet locations (an archive is located at ftp://cdsarc.u-strasbg.fr/pub/cats/VI%2F81/) and place them in a directory somewhere. The environment variable VSOP87 must be set to the path of the directory with the VSOP87 files.
+To run this program, you will need to obtain the VSOP87 files for planet locations (an archive is located at ftp://cdsarc.u-strasbg.fr/pub/cats/VI%2F81/, but a github mirror located at https://github.com/ctdk/vsop87 is probably easiest) and place them in a directory somewhere. The environment variable VSOP87 must be set to the path of the directory with the VSOP87 files.
 
     Usage of ./jovian-noise:
       -duration duration
-       	    Duration (in golang ParseDuration format) from the start time to calculate the forecast (default 720h0m0s)
+            Duration (in golang ParseDuration format) from the start time to calculate the forecast (default 720h0m0s)
       -interval int
-    	    Interval in minutes to calculate the forecast (default 30)
+            Interval in minutes to calculate the forecast (default 30)
       -lat int
-    	    Optional latitute. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lon
+            Optional latitute. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lon
+      -local
+            Optionally use this computer's timzone to display results. Conflicts with -timezone and -offset-hours.
       -lon int
-    	    Optional longitude. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lat
+            Optional longitude. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lat
+      -non-io-a
+            Include forecasts for the non-Io-A radio source.
+      -offset-hours float
+            Optional offset in hours east of UTC to display results. Offsets to the west should be given with negative numbers (e.g. '-offset-hours -7'). Conflicts with -timezone and -local.
+      -output string
+            How to format the forecast for output. Currently acceptable options are: text (default), json. (default "text")
       -start-time string
-    	    Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to now)
+            Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to the start of the current hour)
+      -timezone string
+            Optional timezone for displaying results. Conflicts with -offset-hours and -local.
+      -version
+            Print version number and exit.
 
 Credits
 
@@ -55,50 +67,30 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/soniakeys/meeus/v3/coord"
+	"github.com/soniakeys/meeus/v3/elliptic"
+	"github.com/soniakeys/meeus/v3/julian"
+	pp "github.com/soniakeys/meeus/v3/planetposition"
+	"github.com/soniakeys/meeus/v3/rise"
+	"github.com/soniakeys/meeus/v3/sidereal"
+	"github.com/soniakeys/unit"
 	"log"
 	"math"
 	"os"
 	"time"
-	"github.com/soniakeys/meeus/v3/coord"
-	"github.com/soniakeys/meeus/v3/elliptic"
-	"github.com/soniakeys/meeus/v3/sidereal"
-	"github.com/soniakeys/meeus/v3/globe"
-	"github.com/soniakeys/meeus/v3/rise"
-	"github.com/soniakeys/meeus/v3/julian"
-	pp "github.com/soniakeys/meeus/v3/planetposition"
-	"github.com/soniakeys/sexagesimal"
-	"github.com/soniakeys/unit"
 )
-
-var shortMonths = []string{
-	"",
-	"Jan",
-	"Feb",
-	"Mar",
-	"Apr",
-	"May",
-	"Jun",
-	"Jul",
-	"Aug",
-	"Sep",
-	"Oct",
-	"Nov",
-	"Dec",
-}
 
 const version string = "0.2.0"
 const jpFormat string = "2006-01-02"
 const oneDay time.Duration = 24 * time.Hour
 
-var toRad = math.Pi / 180
-var toDeg = unit.Angle(180 / math.Pi)
-
 func main() {
 	startTime := flag.String("start-time", "", "Start time (in RFC 3339 format) to calculate Jupiter radio storm forecasts (defaults to the start of the current hour)")
-	dur := flag.Duration("duration", 30 * oneDay, "Duration (in golang ParseDuration format) from the start time to calculate the forecast")
+	dur := flag.Duration("duration", 30*oneDay, "Duration (in golang ParseDuration format) from the start time to calculate the forecast")
 	interval := flag.Int("interval", 30, "Interval in minutes to calculate the forecast")
-	tz := flag.String("timezone", "", "Optional timezone for displaying results. Conflicts with -offset-hours.")
-	offsetHours := flag.Float64("offset-hours", 0, "Optional offset in hours east of UTC to display results. Offsets to the west should be given with negative numbers (e.g. '-offset-hours -7'). Conflicts with -timezone.")
+	tz := flag.String("timezone", "", "Optional timezone for displaying results. Conflicts with -offset-hours and -local.")
+	offsetHours := flag.Float64("offset-hours", 0, "Optional offset in hours east of UTC to display results. Offsets to the west should be given with negative numbers (e.g. '-offset-hours -7' or '-offset-hours 9.5'). Conflicts with -timezone and -local.")
+	localTZ := flag.Bool("local", false, "Optionally use this computer's timzone to display results. Conflicts with -timezone and -offset-hours.")
 	lat := flag.Int("lat", 0, "Optional latitute. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lon")
 	lon := flag.Int("lon", 0, "Optional longitude. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lat")
 	ver := flag.Bool("version", false, "Print version number and exit.")
@@ -120,14 +112,30 @@ func main() {
 		fmt.Printf("-interval must be at least 1 minute.\n")
 		os.Exit(1)
 	}
-	if *dur < time.Duration(*interval) * time.Minute {
+	if *dur < time.Duration(*interval)*time.Minute {
 		fmt.Printf("-duration really should be longer than the interval specified.\n")
 		os.Exit(1)
 	}
 
-	if *tz != "" && math.Round(*offsetHours) != 0 {
-		fmt.Printf("One or the other of -timezone and -offset-hours can be specified, but not both. Neither is required, however.")
+	roundOffset := int(*offsetHours)
+	// bleh
+	if *tz != "" && roundOffset != 0 || *tz != "" && *localTZ || roundOffset != 0 && *localTZ {
+		fmt.Printf("One of the -timezone, -offset-hours, and -local flags can be specified, but not more than that. None are required, however.")
 		os.Exit(1)
+	}
+
+	if *tz != "" {
+		if loc, err := time.LoadLocation(*tz); err != nil {
+			fmt.Printf("Error loading timezone %s: %w\n", *tz, err)
+		} else {
+			jData.Location = loc
+		}
+	} else if roundOffset != 0 {
+		m := time.Duration(*offsetHours * 60)
+		secondsEast := int((m * time.Minute).Seconds())
+		jData.Location = time.FixedZone("Manual Offset Zone", secondsEast)
+	} else if *localTZ {
+		jData.Location = time.Local
 	}
 
 	jData.Duration = *dur
@@ -146,28 +154,35 @@ func main() {
 	}
 	jData.StartTime = t
 
-	if *lat != 0 && *lon == 0 || *lat == 0 && *lon != 0 {
+	var latSet, lonSet bool
+	for _, v := range os.Args {
+		if v == "-lat" {
+			latSet = true
+		} else if v == "-lon" {
+			lonSet = true
+		}
+	}
+
+	if latSet && !lonSet || !latSet && lonSet {
 		log.Println("Both -lat and -lon, or neither, must be supplied")
 		os.Exit(1)
 	}
-	var coords globe.Coord
-	var dispLon int
 
-	if *lat != 0 && *lon != 0 {
+	if latSet && lonSet {
 		// for some reason this figures longitude backwards from
 		// the way everyone else does it.
-		jData.DisplayLongitude = *lon
-		dispLon = *lon
-		*lon = -*lon
-		if *lon < 0 {
-			*lon += 360
+		if *lon != 0 {
+			*lon = -*lon
+			if *lon < 0 {
+				*lon += 360
+			}
 		}
-		coords.Lon = unit.NewAngle('+', *lon, 0, 0)
-		coords.Lat = unit.NewAngle('+', *lat, 0, 0)
-		jData.Coords = coords
+
+		jData.Coords.Lon = unit.NewAngle('+', *lon, 0, 0)
+		jData.Coords.Lat = unit.NewAngle('+', *lat, 0, 0)
 		jData.LocalForecast = true
-		jData.DisplayLongitude = dispLon
 	}
+
 	earth, err := pp.LoadPlanet(pp.Earth)
 	if err != nil {
 		panic(err)
@@ -183,7 +198,7 @@ func main() {
 
 	if jData.LocalForecast {
 		// Calculate Jupiter's positions ahead of time.
-		jupPositions = make(map[string]*jupiterPosition, endTime.Sub(t) / time.Hour / 24 / 2)
+		jupPositions = make(map[string]*jupiterPosition, endTime.Sub(t)/time.Hour/24/2)
 
 		tJup := t.Add(-oneDay)
 		for tJup.Before(endTime.Add(2 * oneDay)) {
@@ -193,7 +208,7 @@ func main() {
 			ra, dec := elliptic.Position(jupiter, earth, rjd)
 			th0 := sidereal.Apparent0UT(rjd)
 			h0 := rise.Stdh0Stellar
-			rising, transit, set, err := rise.ApproxTimes(coords, h0, th0, ra, dec)
+			rising, transit, set, err := rise.ApproxTimes(jData.Coords, h0, th0, ra, dec)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -224,9 +239,7 @@ func main() {
 			el, _, eDist := earth.Position2000(jd)
 			jl, _, jDist := jupiter.Position2000(jd)
 			meridian := systemIIIMeridian(jd)
-			eLon := float64(el * toDeg)
-			jLon := float64(jl * toDeg)
-			dist := distance(eLon, eDist, jLon, jDist)
+			dist := distance(el, eDist, jl, jDist)
 			ioPhase := ioPos(jd, dist)
 			rSource := source(meridian, ioPhase)
 
@@ -246,7 +259,7 @@ func main() {
 					}
 					diff := cur - float64(correctTransit)
 					fi.TransitHA = unit.HourAngleFromSec(diff)
-					az, alt := coord.EqToHz(jp.RA, jp.Dec, jData.Coords.Lat, jData.Coords.Lon, sidereal.Apparent(jd)) 
+					az, alt := coord.EqToHz(jp.RA, jp.Dec, jData.Coords.Lat, jData.Coords.Lon, sidereal.Apparent(jd))
 					fi.AltAz = &hzCoords{Altitude: alt, Azimuth: az + math.Pi}
 				}
 				jData.Intervals = append(jData.Intervals, fi)
@@ -255,13 +268,7 @@ func main() {
 		t = t.Add(time.Duration(*interval) * time.Minute)
 	}
 
-	/* fmt.Printf("\n\n\n")
-	for _, fi := range jData.Intervals {
-		fmt.Printf("Time: %v :: %s ::  %f :: %+.3j %+.3j %v\n", fi.Instant, fi.RadioSource, fi.TransitHA.Hour(), sexa.FmtAngle(fi.AltAz.Altitude), sexa.FmtAngle(fi.AltAz.Azimuth), fi.Recommended())
-	}
-	*/
-
-	switch output {
+	switch *output {
 	case "text":
 		if err := outputText(jData); err != nil {
 			log.Fatal(err)
@@ -271,7 +278,7 @@ func main() {
 			log.Fatal(err)
 		}
 	default:
-		log.Fatalf("Output format '%s' is not a valid selection. Aborting.", output)
+		log.Fatalf("Output format '%s' is not a valid selection. Aborting.", *output)
 	}
 	os.Exit(0)
 }

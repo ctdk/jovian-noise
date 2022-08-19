@@ -113,7 +113,7 @@ func outputText(jData *jupiterData) error {
 				}
 				localData = fmt.Sprintf("%s%s\t", l.Format("15:04"), nextDay)
 			}
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s%0.2f\t%0.2f\t%0.2f\t%s\t\n", fi.Instant.YearDay(), fi.Instant.Format("Jan 02"), localData, fi.Instant.Format("15:04"), fi.IoPhase.Deg(), fi.Meridian.Deg(), fi.Distance, fi.RadioSource)
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s%0.2f\t%0.2f\t%0.2f\t%s\t\n", fi.Instant.YearDay(), fi.Instant.Format("Jan 02"), fi.Instant.Format("15:04"), localData, fi.IoPhase.Deg(), fi.Meridian.Deg(), fi.Distance, fi.RadioSource)
 		}
 	}
 

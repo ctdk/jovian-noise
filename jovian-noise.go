@@ -80,7 +80,7 @@ import (
 	"time"
 )
 
-const version string = "0.3.0"
+const version string = "0.3.1"
 const jpFormat string = "2006-01-02"
 const oneDay time.Duration = 24 * time.Hour
 

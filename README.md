@@ -16,7 +16,7 @@ To run this program, you will need to obtain the VSOP87 files for planet locatio
       -lat int
             Optional latitute. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lon
       -local
-            Optionally use this computer's timzone to display results. Conflicts with -timezone and -offset-hours.
+            Optionally use this computer's timezone to display results. Conflicts with -timezone and -offset-hours.
       -lon int
             Optional longitude. If given, will limit results to when Jupiter is above the horizon at this location. Requires -lat
       -non-io-a
